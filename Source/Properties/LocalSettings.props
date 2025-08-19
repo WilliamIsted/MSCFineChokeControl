@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <MSCInstallPath>$(MSCInstallPath)</MSCInstallPath>
+    <MSCLocalLow>$(MSCLocalLow)</MSCLocalLow>
+    <MSCManagedPath>$(MSCManagedPath)</MSCManagedPath>
+    <MSCModsPath>$(MSCInstallPath)\Mods</MSCModsPath>
+  </PropertyGroup>
+</Project>
