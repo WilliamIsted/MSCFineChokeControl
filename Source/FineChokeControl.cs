@@ -26,7 +26,7 @@ namespace FineChokeControl
         /// <summary>
         /// Mod version.
         /// </summary>
-        public override string Version => "1.0.0";
+        public override string Version => "1.0.1";
         
         /// <summary>
         /// Author of the mod.
@@ -55,11 +55,17 @@ namespace FineChokeControl
         private FsmVariables ChokeUse;
         private FsmVariables ChokeChoke;
         private GameObject   ChokeKnob;
+        private FsmString    Subtitle;
 
         /// <summary>
         /// Sensitivity of the choke adjustment
         /// </summary>
         private SettingsSlider ChokeSensitivitySlider;
+
+        /// <summary>
+        /// Invert the scroll wheel
+        /// </summary>
+        private SettingsCheckBox ScrollWheelInvert;
 
         /// <summary>
         /// Registers the setup functions for load and update.
@@ -87,6 +93,8 @@ namespace FineChokeControl
 
             ChokeKnob  = GameObject.Find("SATSUMA(557kg, 248)/Dashboard/pivot_dashboard/dashboard(Clone)/pivot_meters/dashboard meters(Clone)/Knobs/KnobChoke/knob");
 
+            Subtitle   = GlobalVars.FindFsmString("GUIsubtitle");
+
         }
 
         /// <summary>
@@ -102,15 +110,22 @@ namespace FineChokeControl
             if (isDashboard && isChoke)
             {
 
+                // Get FSM floats
+                FsmFloat chokeLevel = ChokeChoke.FindFsmFloat("ChokeLevel");
+                FsmFloat chokeUse = ChokeUse.FindFsmFloat("Choke");
+                FsmFloat knobPos = ChokeUse.FindFsmFloat("KnobPos");
+
                 float scroll = Input.GetAxis("Mouse ScrollWheel");
+
+                if (ScrollWheelInvert.GetValue()) scroll *= -1f;
+
+                if (Input.GetMouseButtonDown(2))
+                {
+                    scroll = (chokeUse.Value < 0.5f) ? +999f : -999f;
+                }
 
                 if (Mathf.Abs(scroll) > 0f)
                 {
-
-                    // Get FSM floats
-                    FsmFloat chokeLevel = ChokeChoke.FindFsmFloat("ChokeLevel");
-                    FsmFloat chokeUse = ChokeUse.FindFsmFloat("Choke");
-                    FsmFloat knobPos = ChokeUse.FindFsmFloat("KnobPos");
 
                     // Adjust choke level
                     float chokeStep = 0.05f * ( ChokeSensitivitySlider.GetValue() * 2 );
@@ -130,6 +145,8 @@ namespace FineChokeControl
                     pos.y = Mathf.Clamp(knobPos.Value, -0.03f, 0f);
                     ChokeKnob.transform.localPosition = pos;
 
+                    Subtitle.Value = $"{Mathf.RoundToInt(chokeUse.Value * 100f)}%";
+
                 }
 
             }
@@ -139,6 +156,7 @@ namespace FineChokeControl
         private void DoModSettings()
         {
             ChokeSensitivitySlider = Settings.AddSlider("ChokeSensitivity", "Choke Sensitivity", 0.1f, 2f, 1f, null, 1);
+            ScrollWheelInvert      = Settings.AddCheckBox("ScrollWheelInvert", "Invert Scroll Wheel", false);
         }
 
     }
