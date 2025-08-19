@@ -26,7 +26,7 @@ namespace FineChokeControl
         /// <summary>
         /// Mod version.
         /// </summary>
-        public override string Version => "0.0.1";
+        public override string Version => "1.0.0";
         
         /// <summary>
         /// Author of the mod.
@@ -40,15 +40,26 @@ namespace FineChokeControl
         /// </summary>
         public override string Description => "Fine control over the Satsuma choke via the scroll wheel";
 
+        /*
+         * 
+         * 
+         * 
+         */
+
+        private readonly float ChokeMin   =  0.00000f; // Choke fully closed
+        private readonly float ChokeMax   =  1.00000f; // Choke fully open
+        private readonly float KnobPosMin =  0.00000f; // Knob at Choke = 0
+        private readonly float KnobPosMax = -0.03000f; // Lnob at Choke = 1
+
+        private FsmVariables GlobalVars;
+        private FsmVariables ChokeUse;
+        private FsmVariables ChokeChoke;
+        private GameObject   ChokeKnob;
+
         /// <summary>
         /// Sensitivity of the choke adjustment
         /// </summary>
-        private readonly float ChokeSensitivity = 2.0f;
-
-        private FsmVariables globalVars;
-        private PlayMakerFSM Choke;
-        private PlayMakerFSM ChokePos;
-        private GameObject ChokeObject;
+        private SettingsSlider ChokeSensitivitySlider;
 
         /// <summary>
         /// Registers the setup functions for load and update.
@@ -57,6 +68,7 @@ namespace FineChokeControl
         {
             SetupFunction(Setup.OnLoad, DoOnLoad);
             SetupFunction(Setup.Update, DoUpdate);
+            SetupFunction(Setup.ModSettings, DoModSettings);
         }
 
         /// <summary>
@@ -64,14 +76,16 @@ namespace FineChokeControl
         /// </summary>
         private void DoOnLoad()
         {
-            
-            globalVars = PlayMakerGlobals.Instance.Variables;
-            Choke = GameObject.Find("Choke").GetComponents<PlayMakerFSM>()
-                .FirstOrDefault(fsm => fsm != null && fsm.FsmName == "Choke");
-            ChokePos = GameObject.Find("Choke").GetComponents<PlayMakerFSM>()
-                .FirstOrDefault(fsm => fsm != null && fsm.FsmName == "Use");
 
-            ChokeObject = GameObject.Find("SATSUMA(557kg, 248)/Dashboard/pivot_dashboard/dashboard(Clone)/pivot_meters/dashboard meters(Clone)/Knobs/KnobChoke/knob");
+            GameObject Choke = GameObject.Find("Choke");
+
+            GlobalVars = PlayMakerGlobals.Instance.Variables;
+            ChokeUse   = Choke.GetComponents<PlayMakerFSM>()
+                    .FirstOrDefault(fsm => fsm != null && fsm.FsmName == "Use").FsmVariables;
+            ChokeChoke = Choke.GetComponents<PlayMakerFSM>()
+                    .FirstOrDefault(fsm => fsm != null && fsm.FsmName == "Choke").FsmVariables;
+
+            ChokeKnob  = GameObject.Find("SATSUMA(557kg, 248)/Dashboard/pivot_dashboard/dashboard(Clone)/pivot_meters/dashboard meters(Clone)/Knobs/KnobChoke/knob");
 
         }
 
@@ -82,44 +96,49 @@ namespace FineChokeControl
         private void DoUpdate()
         {
 
-            string pickedPart = globalVars.FindFsmString("PickedPart").Value.ToUpper();
-            string interaction = globalVars.FindFsmString("GUIinteraction").Value.ToUpper();
+            bool isDashboard = GlobalVars.FindFsmString("PickedPart").Value.ToUpper() == "DASHBOARD";
+            bool isChoke     = GlobalVars.FindFsmString("GUIinteraction").Value.ToUpper() == "CHOKE";
 
-            if (pickedPart == "DASHBOARD" && interaction == "CHOKE")
+            if (isDashboard && isChoke)
             {
 
                 float scroll = Input.GetAxis("Mouse ScrollWheel");
-                if (Mathf.Abs(scroll) > 0.00001f)
+
+                if (Mathf.Abs(scroll) > 0f)
                 {
 
-                    // Get choke related variables
-                    var chokeLevel = Choke.FsmVariables.FindFsmFloat("ChokeLevel");
-                    var chokePos = ChokePos.FsmVariables.FindFsmFloat("Choke");
-                    var knobPos = ChokePos.FsmVariables.FindFsmFloat("KnobPos");
+                    // Get FSM floats
+                    FsmFloat chokeLevel = ChokeChoke.FindFsmFloat("ChokeLevel");
+                    FsmFloat chokeUse = ChokeUse.FindFsmFloat("Choke");
+                    FsmFloat knobPos = ChokeUse.FindFsmFloat("KnobPos");
 
-                    // Update choke level
-                    chokeLevel.Value += scroll * ChokeSensitivity;
-                    chokeLevel.Value = Mathf.Clamp01((float)Math.Round(chokeLevel.Value, 5));
+                    // Adjust choke level
+                    float chokeStep = 0.05f * ( ChokeSensitivitySlider.GetValue() * 2 );
+                    chokeUse.Value += scroll * chokeStep;
+                    chokeUse.Value = Mathf.Clamp(chokeUse.Value, 0f, 1f);
+                    chokeUse.Value = (float)Math.Round(chokeUse.Value, 3);
 
-                    // Sync FSM values
-                    chokePos.Value = chokeLevel.Value;
+                    // Mirror choke level
+                    chokeLevel.Value = chokeUse.Value;
 
-                    // KnobPos
-                    knobPos.Value = -0.03f * chokeLevel.Value;
+                    // Update knobPos from choke
+                    knobPos.Value = Mathf.Lerp(0f, -0.03f, chokeUse.Value);
+                    knobPos.Value = (float)Math.Round(knobPos.Value, 5);
 
-                    // Update transform
-                    Vector3 pos = ChokeObject.transform.localPosition;
-                    float targetY = knobPos.Value;
-
-                    // Smooth knob y-position
-                    float smoothSpeed = 10f;
-                    pos.y = Mathf.Lerp(pos.y, targetY, Time.deltaTime * smoothSpeed);
-                    ChokeObject.transform.localPosition = pos;
+                    // Update visual knob transform
+                    Vector3 pos = ChokeKnob.transform.localPosition;
+                    pos.y = Mathf.Clamp(knobPos.Value, -0.03f, 0f);
+                    ChokeKnob.transform.localPosition = pos;
 
                 }
 
             }
 
+        }
+
+        private void DoModSettings()
+        {
+            ChokeSensitivitySlider = Settings.AddSlider("ChokeSensitivity", "Choke Sensitivity", 0.1f, 2f, 1f, null, 1);
         }
 
     }
